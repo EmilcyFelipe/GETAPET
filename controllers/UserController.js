@@ -1,4 +1,9 @@
+const { default: mongoose } = require('mongoose')
 const User = require('../models/User')
+
+const bcrypt = require('bcrypt')
+
+const createUserToken = require('../helpers/create-user-token')
 
 module.exports = class UserController{
     static async register(req,res){
@@ -36,6 +41,65 @@ module.exports = class UserController{
             res.status(422).json({message:'A senha e a confirmação de senha devem ser iguais'})
             return
         }
+
+        // check if user exists
+        const userExists = await User.findOne({email:email})
+        if(userExists){
+            res.status(422).json({message:'Por favor, utilize outro email'})
+            return
+        }
+
+        const salt = await bcrypt.genSalt(12)
+        const passwordHash = await bcrypt.hash(password,salt)
+
+        //create a user 
+        const user = new User({
+            name,
+            email,
+            phone,
+            password:passwordHash,
+        })
+
+        try{
+            const newUser = await user.save()
+            await createUserToken(newUser,req,res)
+        }catch(err){
+            res.status(500).json({message:err})
+            return
+        }
+
+    }
+
+    static async login(req,res){
+        const {email, password} = req.body;
+
+        if(!email){
+            res.status(422).json({message:"Por favor, informe seu email"})
+            return
+        }
+        if(!password){
+            res.status(422).json({message:"Por favor, sua senha"})
+            return
+        }
+        
+        const user = await User.findOne({email:email})
+        console.log(user.password)
+
+        if(!user){
+            res.status(422).json({message:"Não há usuário cadastrado com este e-mail"})
+            return
+        }
+        //check if password match
+        const checkPassword = await bcrypt.compare(password,user.password)
+        if(!checkPassword){
+            res.status(422).json({
+                message:'Senha inválida!'
+            })
+            return
+        }
+
+        await createUserToken(user,req,res)
+
     }
 }
 
